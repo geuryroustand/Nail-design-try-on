@@ -1,11 +1,10 @@
 "use client"
 
-import type React from "react"
-import { useState, useRef, useEffect, useCallback } from "react"
+import React, { useState, useRef, useEffect, useCallback } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
-import { Loader2, Download, RefreshCw, Share2, Sparkles, AlertTriangle, Camera, Upload, Scissors } from "lucide-react"
+import { Loader2, Download, RefreshCw, Share2, Sparkles, AlertTriangle, Camera, Upload, Scissors, Hand } from "lucide-react"
 
 // MediaPipe Hands types
 interface HandLandmark {
@@ -25,15 +24,23 @@ const FINGER_LANDMARKS = {
   INDEX: { tip: 8, base: 6, mid: 7, pip: 5 },
   MIDDLE: { tip: 12, base: 10, mid: 11, pip: 9 },
   RING: { tip: 16, base: 14, mid: 15, pip: 13 },
-  PINKY: { tip: 20, base: 18, mid: 19, pip: 17 },
+  PINKY: { tip: 20, base: 18, mid: 19, pip: 17 }
 }
 
 interface ExtractedNailDesign {
   fingerId: string
   canvas: HTMLCanvasElement
-  originalPosition: { x: number; y: number }
+  originalPosition: { x: number, y: number }
   rotation: number
   scale: number
+  width: number
+  height: number
+}
+
+interface NailPosition {
+  x: number
+  y: number
+  rotation: number
   width: number
   height: number
 }
@@ -45,7 +52,7 @@ export default function ProfessionalNailTryOn() {
   const [processedImage, setProcessedImage] = useState<string | null>(null)
   const [extractedDesigns, setExtractedDesigns] = useState<ExtractedNailDesign[]>([])
   const [isLoading, setIsLoading] = useState(false)
-  const [currentStep, setCurrentStep] = useState<"upload" | "extract" | "capture" | "apply">("upload")
+  const [currentStep, setCurrentStep] = useState<'upload' | 'extract' | 'capture' | 'apply'>('upload')
   const [error, setError] = useState<string | null>(null)
   const [statusMessage, setStatusMessage] = useState<string>("Upload a nail design image to start.")
   const [handsModel, setHandsModel] = useState<any>(null)
@@ -60,7 +67,7 @@ export default function ProfessionalNailTryOn() {
   // Load MediaPipe Hands
   const loadMediaPipeHands = useCallback(() => {
     // Check if MediaPipe is already loaded
-    if (typeof window !== "undefined" && (window as any).Hands) {
+    if (typeof window !== 'undefined' && (window as any).Hands) {
       initializeHands()
       return
     }
@@ -105,7 +112,7 @@ export default function ProfessionalNailTryOn() {
   // Initialize MediaPipe Hands
   const initializeHands = useCallback(() => {
     try {
-      if (typeof window === "undefined" || !(window as any).Hands) {
+      if (typeof window === 'undefined' || !(window as any).Hands) {
         setError("MediaPipe Hands not available. Please refresh the page.")
         return
       }
@@ -141,14 +148,14 @@ export default function ProfessionalNailTryOn() {
         }
       }
     }
-  }, [loadMediaPipeHands, handsModel])
+  }, [loadMediaPipeHands])
 
   // Handle post image upload
   const handlePostImageUpload = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
     try {
       if (event.target.files && event.target.files[0]) {
         const file = event.target.files[0]
-
+        
         // Validate file size (max 10MB)
         if (file.size > 10 * 1024 * 1024) {
           setError("File size too large. Please select an image under 10MB.")
@@ -260,7 +267,7 @@ export default function ProfessionalNailTryOn() {
               tipLandmark,
               baseLandmark,
               midLandmark,
-              originalImage,
+              originalImage
             )
 
             if (design) {
@@ -274,10 +281,8 @@ export default function ProfessionalNailTryOn() {
 
       if (extractedDesigns.length > 0) {
         setExtractedDesigns(extractedDesigns)
-        setCurrentStep("capture")
-        setStatusMessage(
-          `Successfully extracted ${extractedDesigns.length} nail designs! Now capture your hand to apply them.`,
-        )
+        setCurrentStep('capture')
+        setStatusMessage(`Successfully extracted ${extractedDesigns.length} nail designs! Now capture your hand to apply them.`)
       } else {
         setError("Could not extract any nail designs. Please try an image with clearer nail visibility.")
       }
@@ -291,131 +296,114 @@ export default function ProfessionalNailTryOn() {
   }, [])
 
   // Extract single nail design
-  const extractSingleNailDesign = useCallback(
-    (
-      fingerId: string,
-      tip: HandLandmark,
-      base: HandLandmark,
-      mid: HandLandmark,
-      sourceImage: HTMLImageElement,
-    ): ExtractedNailDesign | null => {
-      try {
-        const canvas = document.createElement("canvas")
-        const ctx = canvas.getContext("2d")
-        if (!ctx) return null
+  const extractSingleNailDesign = useCallback((
+    fingerId: string,
+    tip: HandLandmark,
+    base: HandLandmark,
+    mid: HandLandmark,
+    sourceImage: HTMLImageElement
+  ): ExtractedNailDesign | null => {
+    try {
+      const canvas = document.createElement("canvas")
+      const ctx = canvas.getContext("2d")
+      if (!ctx) return null
 
-        // Convert normalized coordinates to pixel coordinates
-        const tipPx = { x: tip.x * sourceImage.naturalWidth, y: tip.y * sourceImage.naturalHeight }
-        const basePx = { x: base.x * sourceImage.naturalWidth, y: base.y * sourceImage.naturalHeight }
-        const midPx = { x: mid.x * sourceImage.naturalWidth, y: mid.y * sourceImage.naturalHeight }
+      // Convert normalized coordinates to pixel coordinates
+      const tipPx = { x: tip.x * sourceImage.naturalWidth, y: tip.y * sourceImage.naturalHeight }
+      const basePx = { x: base.x * sourceImage.naturalWidth, y: base.y * sourceImage.naturalHeight }
+      const midPx = { x: mid.x * sourceImage.naturalWidth, y: mid.y * sourceImage.naturalHeight }
 
-        // Calculate nail dimensions
-        const nailLength = Math.sqrt(Math.pow(tipPx.x - basePx.x, 2) + Math.pow(tipPx.y - basePx.y, 2))
-        const nailWidth = nailLength * 0.8 // Nail width ratio
+      // Calculate nail dimensions
+      const nailLength = Math.sqrt(Math.pow(tipPx.x - basePx.x, 2) + Math.pow(tipPx.y - basePx.y, 2))
+      const nailWidth = nailLength * 0.8 // Nail width ratio
 
-        // Calculate rotation
-        const rotation = Math.atan2(tipPx.y - midPx.y, tipPx.x - midPx.x)
+      // Calculate rotation
+      const rotation = Math.atan2(tipPx.y - midPx.y, tipPx.x - midPx.x)
 
-        // Set canvas size
-        canvas.width = Math.max(nailWidth * 1.5, 80)
-        canvas.height = Math.max(nailLength * 1.5, 100)
+      // Set canvas size
+      canvas.width = Math.max(nailWidth * 1.5, 80)
+      canvas.height = Math.max(nailLength * 1.5, 100)
 
-        // Calculate nail center (closer to tip)
-        const centerX = tipPx.x * 0.7 + basePx.x * 0.3
-        const centerY = tipPx.y * 0.7 + basePx.y * 0.3
+      // Calculate nail center (closer to tip)
+      const centerX = tipPx.x * 0.7 + basePx.x * 0.3
+      const centerY = tipPx.y * 0.7 + basePx.y * 0.3
 
-        // Extract nail region
-        ctx.save()
-        ctx.translate(canvas.width / 2, canvas.height / 2)
-        ctx.rotate(-rotation)
+      // Extract nail region
+      ctx.save()
+      ctx.translate(canvas.width / 2, canvas.height / 2)
+      ctx.rotate(-rotation)
 
-        // Extract area around the nail
-        const extractX = Math.max(0, centerX - canvas.width / 2)
-        const extractY = Math.max(0, centerY - canvas.height / 2)
-        const extractWidth = Math.min(canvas.width, sourceImage.naturalWidth - extractX)
-        const extractHeight = Math.min(canvas.height, sourceImage.naturalHeight - extractY)
+      // Extract area around the nail
+      const extractX = Math.max(0, centerX - canvas.width / 2)
+      const extractY = Math.max(0, centerY - canvas.height / 2)
+      const extractWidth = Math.min(canvas.width, sourceImage.naturalWidth - extractX)
+      const extractHeight = Math.min(canvas.height, sourceImage.naturalHeight - extractY)
 
-        if (extractWidth > 0 && extractHeight > 0) {
-          ctx.drawImage(
-            sourceImage,
-            extractX,
-            extractY,
-            extractWidth,
-            extractHeight,
-            -canvas.width / 2,
-            -canvas.height / 2,
-            canvas.width,
-            canvas.height,
-          )
-        }
-
-        ctx.restore()
-
-        // Apply background removal (advanced skin tone detection)
-        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height)
-        const data = imageData.data
-
-        for (let i = 0; i < data.length; i += 4) {
-          const r = data[i]
-          const g = data[i + 1]
-          const b = data[i + 2]
-
-          // Multiple skin tone detection algorithms
-          const isSkinTone = detectSkinTone(r, g, b)
-          const isBackground = detectBackground(r, g, b)
-
-          if (isSkinTone || isBackground) {
-            data[i + 3] = 0 // Make transparent
-          } else {
-            // Enhance nail design colors
-            const brightness = 1.2
-            data[i] = Math.min(255, r * brightness)
-            data[i + 1] = Math.min(255, g * brightness)
-            data[i + 2] = Math.min(255, b * brightness)
-          }
-        }
-
-        ctx.putImageData(imageData, 0, 0)
-
-        return {
-          fingerId,
-          canvas,
-          originalPosition: { x: centerX, y: centerY },
-          rotation,
-          scale: nailLength / 100,
-          width: nailWidth,
-          height: nailLength,
-        }
-      } catch (err) {
-        console.error(`Error extracting nail design for ${fingerId}:`, err)
-        return null
+      if (extractWidth > 0 && extractHeight > 0) {
+        ctx.drawImage(
+          sourceImage,
+          extractX, extractY, extractWidth, extractHeight,
+          -canvas.width / 2, -canvas.height / 2, canvas.width, canvas.height
+        )
       }
-    },
-    [],
-  )
+
+      ctx.restore()
+
+      // Apply background removal (advanced skin tone detection)
+      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height)
+      const data = imageData.data
+
+      for (let i = 0; i < data.length; i += 4) {
+        const r = data[i]
+        const g = data[i + 1]
+        const b = data[i + 2]
+
+        // Multiple skin tone detection algorithms
+        const isSkinTone = detectSkinTone(r, g, b)
+        const isBackground = detectBackground(r, g, b)
+
+        if (isSkinTone || isBackground) {
+          data[i + 3] = 0 // Make transparent
+        } else {
+          // Enhance nail design colors
+          const brightness = 1.2
+          data[i] = Math.min(255, r * brightness)
+          data[i + 1] = Math.min(255, g * brightness)
+          data[i + 2] = Math.min(255, b * brightness)
+        }
+      }
+
+      ctx.putImageData(imageData, 0, 0)
+
+      return {
+        fingerId,
+        canvas,
+        originalPosition: { x: centerX, y: centerY },
+        rotation,
+        scale: nailLength / 100,
+        width: nailWidth,
+        height: nailLength
+      }
+    } catch (err) {
+      console.error(`Error extracting nail design for ${fingerId}:`, err)
+      return null
+    }
+  }, [])
 
   // Advanced skin tone detection
   const detectSkinTone = useCallback((r: number, g: number, b: number): boolean => {
     // Multiple skin tone detection methods
-    const method1 =
-      r > 95 && g > 40 && b > 20 && Math.max(r, g, b) - Math.min(r, g, b) > 15 && Math.abs(r - g) > 15 && r > g && r > b
+    const method1 = (r > 95 && g > 40 && b > 20 && 
+                     Math.max(r, g, b) - Math.min(r, g, b) > 15 &&
+                     Math.abs(r - g) > 15 && r > g && r > b)
 
-    const method2 = r > 120 && g > 80 && b > 50 && r > b && g > b && Math.abs(r - g) < 50
+    const method2 = (r > 120 && g > 80 && b > 50 && 
+                     r > b && g > b && Math.abs(r - g) < 50)
 
-    const method3 =
-      r >= 60 &&
-      r <= 255 &&
-      g >= 40 &&
-      g <= 255 &&
-      b >= 20 &&
-      b <= 255 &&
-      r > g &&
-      g > b &&
-      r > b &&
-      r - g >= 10 &&
-      g - b >= 5
+    const method3 = (r >= 60 && r <= 255 && g >= 40 && g <= 255 && b >= 20 && b <= 255 &&
+                     r > g && g > b && r > b && r - g >= 10 && g - b >= 5)
 
-    const method4 = r > 80 && g > 50 && b > 30 && r > b && g > b
+    const method4 = (r > 80 && g > 50 && b > 30 && r > b && g > b)
 
     return method1 || method2 || method3 || method4
   }, [])
@@ -435,7 +423,7 @@ export default function ProfessionalNailTryOn() {
     try {
       if (event.target.files && event.target.files[0]) {
         const file = event.target.files[0]
-
+        
         if (file.size > 10 * 1024 * 1024) {
           setError("File size too large. Please select an image under 10MB.")
           return
@@ -467,154 +455,152 @@ export default function ProfessionalNailTryOn() {
   }, [])
 
   // Apply extracted designs to user's hand
-  const applyDesignsToUserHand = useCallback(
-    async (imageDataUrl: string) => {
-      if (!handsModel || extractedDesigns.length === 0) {
-        setError("No designs extracted or MediaPipe not ready.")
+  const applyDesignsToUserHand = useCallback(async (imageDataUrl: string) => {
+    if (!handsModel || extractedDesigns.length === 0) {
+      setError("No designs extracted or MediaPipe not ready.")
+      setIsLoading(false)
+      return
+    }
+
+    setIsLoading(true)
+
+    try {
+      const image = new Image()
+      image.crossOrigin = "anonymous"
+      image.src = imageDataUrl
+
+      image.onload = async () => {
+        try {
+          const userCanvas = userImageCanvasRef.current
+          if (!userCanvas) {
+            setError("Canvas not ready.")
+            setIsLoading(false)
+            return
+          }
+
+          userCanvas.width = image.naturalWidth
+          userCanvas.height = image.naturalHeight
+          const ctx = userCanvas.getContext("2d")
+          if (!ctx) {
+            setError("Could not get canvas context.")
+            setIsLoading(false)
+            return
+          }
+          ctx.drawImage(image, 0, 0)
+
+          handsModel.onResults((results: HandsResults) => {
+            applyDesignsToDetectedHand(results, image)
+          })
+
+          await handsModel.send({ image: userCanvas })
+        } catch (err) {
+          console.error("Error processing user image:", err)
+          setError("Error processing hand detection. Please try another photo.")
+          setIsLoading(false)
+        }
+      }
+
+      image.onerror = () => {
+        setError("Failed to load user image for processing.")
+        setIsLoading(false)
+      }
+    } catch (err) {
+      console.error("Error in applyDesignsToUserHand:", err)
+      setError("Failed to apply designs. Please try another image.")
+      setIsLoading(false)
+    }
+  }, [handsModel, extractedDesigns])
+
+  // Apply designs to detected hand
+  const applyDesignsToDetectedHand = useCallback((results: HandsResults, originalImage: HTMLImageElement) => {
+    try {
+      const resultCanvas = resultCanvasRef.current
+      if (!resultCanvas) {
+        setError("Result canvas not ready.")
         setIsLoading(false)
         return
       }
 
-      setIsLoading(true)
-
-      try {
-        const image = new Image()
-        image.crossOrigin = "anonymous"
-        image.src = imageDataUrl
-
-        image.onload = async () => {
-          try {
-            const userCanvas = userImageCanvasRef.current
-            if (!userCanvas) {
-              setError("Canvas not ready.")
-              setIsLoading(false)
-              return
-            }
-
-            userCanvas.width = image.naturalWidth
-            userCanvas.height = image.naturalHeight
-            const ctx = userCanvas.getContext("2d")
-            if (!ctx) {
-              setError("Could not get canvas context.")
-              setIsLoading(false)
-              return
-            }
-            ctx.drawImage(image, 0, 0)
-
-            handsModel.onResults((results: HandsResults) => {
-              applyDesignsToDetectedHand(results, image)
-            })
-
-            await handsModel.send({ image: userCanvas })
-          } catch (err) {
-            console.error("Error processing user image:", err)
-            setError("Error processing hand detection. Please try another photo.")
-            setIsLoading(false)
-          }
-        }
-
-        image.onerror = () => {
-          setError("Failed to load user image for processing.")
-          setIsLoading(false)
-        }
-      } catch (err) {
-        console.error("Error in applyDesignsToUserHand:", err)
-        setError("Failed to apply designs. Please try another image.")
+      resultCanvas.width = originalImage.naturalWidth
+      resultCanvas.height = originalImage.naturalHeight
+      const ctx = resultCanvas.getContext("2d")
+      if (!ctx) {
+        setError("Could not get result canvas context.")
         setIsLoading(false)
+        return
       }
-    },
-    [handsModel, extractedDesigns],
-  )
 
-  // Apply designs to detected hand
-  const applyDesignsToDetectedHand = useCallback(
-    (results: HandsResults, originalImage: HTMLImageElement) => {
-      try {
-        const resultCanvas = resultCanvasRef.current
-        if (!resultCanvas) {
-          setError("Result canvas not ready.")
-          setIsLoading(false)
-          return
-        }
+      // Draw original image
+      ctx.clearRect(0, 0, resultCanvas.width, resultCanvas.height)
+      ctx.drawImage(originalImage, 0, 0, resultCanvas.width, resultCanvas.height)
 
-        resultCanvas.width = originalImage.naturalWidth
-        resultCanvas.height = originalImage.naturalHeight
-        const ctx = resultCanvas.getContext("2d")
-        if (!ctx) {
-          setError("Could not get result canvas context.")
-          setIsLoading(false)
-          return
-        }
+      if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+        const handLandmarks = results.multiHandLandmarks[0]
+        let designsApplied = 0
 
-        // Draw original image
-        ctx.clearRect(0, 0, resultCanvas.width, resultCanvas.height)
-        ctx.drawImage(originalImage, 0, 0, resultCanvas.width, resultCanvas.height)
+        // Apply extracted designs to each finger
+        Object.entries(FINGER_LANDMARKS).forEach(([fingerName, landmarks], index) => {
+          const tipLandmark = handLandmarks[landmarks.tip]
+          const baseLandmark = handLandmarks[landmarks.base]
+          const midLandmark = handLandmarks[landmarks.mid]
 
-        if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
-          const handLandmarks = results.multiHandLandmarks[0]
-          let designsApplied = 0
+          if (tipLandmark && baseLandmark && midLandmark && extractedDesigns[index]) {
+            const design = extractedDesigns[index]
+            
+            // Calculate position and rotation for user's hand
+            const tip = { x: tipLandmark.x * resultCanvas.width, y: tipLandmark.y * resultCanvas.height }
+            const base = { x: baseLandmark.x * resultCanvas.width, y: baseLandmark.y * resultCanvas.height }
+            const mid = { x: midLandmark.x * resultCanvas.width, y: midLandmark.y * resultCanvas.height }
 
-          // Apply extracted designs to each finger
-          Object.entries(FINGER_LANDMARKS).forEach(([fingerName, landmarks], index) => {
-            const tipLandmark = handLandmarks[landmarks.tip]
-            const baseLandmark = handLandmarks[landmarks.base]
-            const midLandmark = handLandmarks[landmarks.mid]
+            const nailLength = Math.sqrt(Math.pow(tip.x - base.x, 2) + Math.pow(tip.y - base.y, 2))
+            const rotation = Math.atan2(tip.y - mid.y, tip.x - mid.x)
 
-            if (tipLandmark && baseLandmark && midLandmark && extractedDesigns[index]) {
-              const design = extractedDesigns[index]
+            // Calculate center position
+            const centerX = tip.x * 0.7 + base.x * 0.3
+            const centerY = tip.y * 0.7 + base.y * 0.3
 
-              // Calculate position and rotation for user's hand
-              const tip = { x: tipLandmark.x * resultCanvas.width, y: tipLandmark.y * resultCanvas.height }
-              const base = { x: baseLandmark.x * resultCanvas.width, y: baseLandmark.y * resultCanvas.height }
-              const mid = { x: midLandmark.x * resultCanvas.width, y: midLandmark.y * resultCanvas.height }
+            // Scale design to match user's nail size
+            const scale = nailLength / design.height
 
-              const nailLength = Math.sqrt(Math.pow(tip.x - base.x, 2) + Math.pow(tip.y - base.y, 2))
-              const rotation = Math.atan2(tip.y - mid.y, tip.x - mid.x)
-
-              // Calculate center position
-              const centerX = tip.x * 0.7 + base.x * 0.3
-              const centerY = tip.y * 0.7 + base.y * 0.3
-
-              // Scale design to match user's nail size
-              const scale = nailLength / design.height
-
-              ctx.save()
-              ctx.translate(centerX, centerY)
-              ctx.rotate(rotation)
-              ctx.scale(scale, scale)
-
-              // Apply design with blending mode for better integration
-              ctx.globalCompositeOperation = "multiply"
-              ctx.globalAlpha = 0.8
-
-              ctx.drawImage(design.canvas, -design.canvas.width / 2, -design.canvas.height / 2)
-
-              ctx.restore()
-              designsApplied++
-            }
-          })
-
-          if (designsApplied > 0) {
-            setStatusMessage(`Successfully applied ${designsApplied} nail designs! Check out your virtual manicure.`)
-          } else {
-            setStatusMessage("Could not apply designs. Please ensure your hand is clearly visible.")
+            ctx.save()
+            ctx.translate(centerX, centerY)
+            ctx.rotate(rotation)
+            ctx.scale(scale, scale)
+            
+            // Apply design with blending mode for better integration
+            ctx.globalCompositeOperation = 'multiply'
+            ctx.globalAlpha = 0.8
+            
+            ctx.drawImage(
+              design.canvas,
+              -design.canvas.width / 2,
+              -design.canvas.height / 2
+            )
+            
+            ctx.restore()
+            designsApplied++
           }
+        })
 
-          setProcessedImage(resultCanvas.toDataURL("image/png"))
-          setCurrentStep("apply")
+        if (designsApplied > 0) {
+          setStatusMessage(`Successfully applied ${designsApplied} nail designs! Check out your virtual manicure.`)
         } else {
-          setStatusMessage("No hand detected in your image. Please try a clearer photo.")
-          setProcessedImage(resultCanvas.toDataURL("image/png"))
+          setStatusMessage("Could not apply designs. Please ensure your hand is clearly visible.")
         }
-      } catch (err) {
-        console.error("Error in applyDesignsToDetectedHand:", err)
-        setError("Error applying nail designs. Please try another photo.")
-      } finally {
-        setIsLoading(false)
+        
+        setProcessedImage(resultCanvas.toDataURL("image/png"))
+        setCurrentStep('apply')
+      } else {
+        setStatusMessage("No hand detected in your image. Please try a clearer photo.")
+        setProcessedImage(resultCanvas.toDataURL("image/png"))
       }
-    },
-    [extractedDesigns],
-  )
+    } catch (err) {
+      console.error("Error in applyDesignsToDetectedHand:", err)
+      setError("Error applying nail designs. Please try another photo.")
+    } finally {
+      setIsLoading(false)
+    }
+  }, [extractedDesigns])
 
   // Camera capture functionality
   const handleCameraCapture = useCallback(() => {
@@ -667,7 +653,7 @@ export default function ProfessionalNailTryOn() {
             ctx.drawImage(video, -canvas.width, 0)
             const imageDataUrl = canvas.toDataURL("image/png")
 
-            stream.getTracks().forEach((track) => track.stop())
+            stream.getTracks().forEach(track => track.stop())
             document.body.removeChild(modal)
 
             setUserImage(imageDataUrl)
@@ -679,7 +665,7 @@ export default function ProfessionalNailTryOn() {
         }
 
         cancelBtn.onclick = () => {
-          stream.getTracks().forEach((track) => track.stop())
+          stream.getTracks().forEach(track => track.stop())
           document.body.removeChild(modal)
         }
       })
@@ -707,7 +693,7 @@ export default function ProfessionalNailTryOn() {
         const response = await fetch(processedImage)
         const blob = await response.blob()
         const file = new File([blob], "nail-design.png", { type: "image/png" })
-
+        
         if (navigator.share && navigator.canShare?.({ files: [file] })) {
           await navigator.share({
             title: "My Virtual Nail Design!",
@@ -732,7 +718,7 @@ export default function ProfessionalNailTryOn() {
     setUserImage(null)
     setProcessedImage(null)
     setExtractedDesigns([])
-    setCurrentStep("upload")
+    setCurrentStep('upload')
     setError(null)
     setStatusMessage("Upload a nail design image to start.")
   }, [])
@@ -747,28 +733,25 @@ export default function ProfessionalNailTryOn() {
       <div className="text-center mb-6">
         <h2 className="text-3xl font-bold text-pink-600 mb-2">Professional Nail Design Try-On</h2>
         <p className="text-gray-600">Extract real nail designs from images and try them on your hands!</p>
-        {!isMediaPipeLoaded && <p className="text-orange-600 text-sm mt-2">Loading MediaPipe Hands...</p>}
+        {!isMediaPipeLoaded && (
+          <p className="text-orange-600 text-sm mt-2">Loading MediaPipe Hands...</p>
+        )}
       </div>
 
       {/* Progress Steps */}
       <div className="flex justify-center mb-8">
         <div className="flex items-center space-x-4">
           {[
-            { step: "upload", icon: Upload, label: "Upload Design" },
-            { step: "extract", icon: Scissors, label: "Extract Patterns" },
-            { step: "capture", icon: Camera, label: "Capture Hand" },
-            { step: "apply", icon: Sparkles, label: "Apply Design" },
+            { step: 'upload', icon: Upload, label: 'Upload Design' },
+            { step: 'extract', icon: Scissors, label: 'Extract Patterns' },
+            { step: 'capture', icon: Camera, label: 'Capture Hand' },
+            { step: 'apply', icon: Sparkles, label: 'Apply Design' }
           ].map(({ step, icon: Icon, label }, index) => (
             <div key={step} className="flex items-center">
-              <div
-                className={`flex items-center justify-center w-10 h-10 rounded-full ${
-                  currentStep === step
-                    ? "bg-pink-500 text-white"
-                    : ["upload", "extract", "capture", "apply"].indexOf(currentStep) > index
-                      ? "bg-green-500 text-white"
-                      : "bg-gray-200 text-gray-500"
-                }`}
-              >
+              <div className={`flex items-center justify-center w-10 h-10 rounded-full ${
+                currentStep === step ? 'bg-pink-500 text-white' : 
+                ['upload', 'extract', 'capture', 'apply'].indexOf(currentStep) > index ? 'bg-green-500 text-white' : 'bg-gray-200 text-gray-500'
+              }`}>
                 <Icon className="w-5 h-5" />
               </div>
               <span className="ml-2 text-sm font-medium">{label}</span>
@@ -779,7 +762,7 @@ export default function ProfessionalNailTryOn() {
       </div>
 
       {/* Step 1: Upload Design Image */}
-      {currentStep === "upload" && (
+      {currentStep === 'upload' && (
         <div className="text-center">
           <h3 className="text-xl font-semibold mb-4">Step 1: Upload Nail Design Image</h3>
           <div className="border-2 border-dashed border-pink-300 rounded-lg p-8 mb-4">
@@ -792,16 +775,16 @@ export default function ProfessionalNailTryOn() {
               className="max-w-md mx-auto file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-pink-50 file:text-pink-700 hover:file:bg-pink-100"
             />
           </div>
-
+          
           {postImage && (
             <div className="mb-4">
               <img
-                src={postImage || "/placeholder.svg"}
+                src={postImage}
                 alt="Uploaded nail design"
                 className="mx-auto rounded-lg shadow-md object-cover max-w-sm h-auto"
               />
-              <Button
-                onClick={extractNailDesigns}
+              <Button 
+                onClick={extractNailDesigns} 
                 className="mt-4 bg-pink-500 hover:bg-pink-600 text-white"
                 disabled={isLoading || !handsModel}
               >
@@ -814,7 +797,7 @@ export default function ProfessionalNailTryOn() {
       )}
 
       {/* Step 2: Show Extracted Designs */}
-      {currentStep === "extract" && (
+      {currentStep === 'extract' && (
         <div className="text-center">
           <h3 className="text-xl font-semibold mb-4">Step 2: Extracted Nail Designs</h3>
           <div className="grid grid-cols-5 gap-4 mb-6">
@@ -837,7 +820,10 @@ export default function ProfessionalNailTryOn() {
               </div>
             ))}
           </div>
-          <Button onClick={() => setCurrentStep("capture")} className="bg-pink-500 hover:bg-pink-600 text-white">
+          <Button 
+            onClick={() => setCurrentStep('capture')} 
+            className="bg-pink-500 hover:bg-pink-600 text-white"
+          >
             <Camera className="mr-2 h-4 w-4" />
             Continue to Hand Capture
           </Button>
@@ -845,7 +831,7 @@ export default function ProfessionalNailTryOn() {
       )}
 
       {/* Step 3: Capture User Hand */}
-      {currentStep === "capture" && (
+      {currentStep === 'capture' && (
         <div className="text-center">
           <h3 className="text-xl font-semibold mb-4">Step 3: Capture Your Hand</h3>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
@@ -881,19 +867,19 @@ export default function ProfessionalNailTryOn() {
       )}
 
       {/* Step 4: Show Result */}
-      {currentStep === "apply" && processedImage && (
+      {currentStep === 'apply' && processedImage && (
         <div className="text-center">
           <h3 className="text-xl font-semibold mb-4">Step 4: Your Virtual Nail Design!</h3>
           <div className="border-2 border-pink-300 rounded-lg overflow-hidden shadow-md inline-block mb-6">
-            <img src={processedImage || "/placeholder.svg"} alt="Processed nail design" className="max-w-full h-auto" />
+            <img
+              src={processedImage}
+              alt="Processed nail design"
+              className="max-w-full h-auto"
+            />
           </div>
-
+          
           <div className="flex justify-center gap-3 mb-4">
-            <Button
-              onClick={handleSaveImage}
-              variant="outline"
-              className="border-pink-500 text-pink-500 hover:bg-pink-50"
-            >
+            <Button onClick={handleSaveImage} variant="outline" className="border-pink-500 text-pink-500 hover:bg-pink-50">
               <Download className="mr-2 h-4 w-4" />
               Save Image
             </Button>
@@ -910,7 +896,7 @@ export default function ProfessionalNailTryOn() {
           <div className="bg-green-50 border border-green-200 rounded-lg p-4">
             <h4 className="font-semibold text-green-800 mb-2">🎉 Success!</h4>
             <p className="text-sm text-green-700">
-              Your nail design has been successfully applied! The design was extracted from the original image and
+              Your nail design has been successfully applied! The design was extracted from the original image and 
               precisely positioned on your nails using advanced hand detection technology.
             </p>
           </div>
@@ -924,8 +910,8 @@ export default function ProfessionalNailTryOn() {
           <p className="mt-2 text-gray-600">{statusMessage}</p>
           <div className="mt-4 bg-yellow-50 border border-yellow-200 rounded-lg p-3">
             <p className="text-sm text-yellow-700">
-              {currentStep === "extract" && "Analyzing hand landmarks and extracting nail designs..."}
-              {currentStep === "capture" && "Processing your image and applying designs..."}
+              {currentStep === 'extract' && "Analyzing hand landmarks and extracting nail designs..."}
+              {currentStep === 'capture' && "Processing your image and applying designs..."}
             </p>
           </div>
         </div>
@@ -952,26 +938,14 @@ export default function ProfessionalNailTryOn() {
         <h4 className="font-semibold text-gray-800 mb-2">🔧 Technical Details:</h4>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm text-gray-600">
           <div>
-            <p>
-              <strong>Hand Detection:</strong> MediaPipe Hands
-            </p>
-            <p>
-              <strong>Landmarks Used:</strong> Points 4, 8, 12, 16, 20 (fingertips)
-            </p>
-            <p>
-              <strong>Background Removal:</strong> Advanced skin tone detection
-            </p>
+            <p><strong>Hand Detection:</strong> MediaPipe Hands</p>
+            <p><strong>Landmarks Used:</strong> Points 4, 8, 12, 16, 20 (fingertips)</p>
+            <p><strong>Background Removal:</strong> Advanced skin tone detection</p>
           </div>
           <div>
-            <p>
-              <strong>Design Extraction:</strong> Automated nail region cropping
-            </p>
-            <p>
-              <strong>Application Method:</strong> Landmark-based positioning
-            </p>
-            <p>
-              <strong>Processing:</strong> Canvas API with advanced blending
-            </p>
+            <p><strong>Design Extraction:</strong> Automated nail region cropping</p>
+            <p><strong>Application Method:</strong> Landmark-based positioning</p>
+            <p><strong>Processing:</strong> Canvas API with advanced blending</p>
           </div>
         </div>
       </div>
