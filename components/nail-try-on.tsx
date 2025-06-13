@@ -1,47 +1,51 @@
-import React, { useState, useRef, useEffect, useCallback, useMemo } from "react"
+"use client"
+
+import React, { useState, useRef, useEffect, useCallback } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
-import { Loader2, Download, RefreshCw, Share2, Sparkles, AlertTriangle, Camera, Upload, Scissors } from "lucide-react"
+import { Loader2, Download, RefreshCw, Share2, Sparkles, AlertTriangle, Camera, Upload, Scissors, Hand } from "lucide-react"
 
-// Types for MediaPipe Hands
-type HandLandmark = {
+// MediaPipe Hands types
+interface HandLandmark {
   x: number
   y: number
   z?: number
 }
 
-type HandsResults = {
+interface HandsResults {
   multiHandLandmarks?: HandLandmark[][]
   multiHandedness?: any[]
 }
 
-declare global {
-  interface Window {
-    Hands: any
-    drawConnectors: any
-    drawLandmarks: any
-  }
-}
-
-// Finger tip and base landmark indices for MediaPipe Hands
+// Finger landmark indices for MediaPipe Hands
 const FINGER_LANDMARKS = {
-  THUMB: { tip: 4, base: 2, mid: 3 },
-  INDEX: { tip: 8, base: 6, mid: 7 },
-  MIDDLE: { tip: 12, base: 10, mid: 11 },
-  RING: { tip: 16, base: 14, mid: 15 },
-  PINKY: { tip: 20, base: 18, mid: 19 }
+  THUMB: { tip: 4, base: 2, mid: 3, pip: 1 },
+  INDEX: { tip: 8, base: 6, mid: 7, pip: 5 },
+  MIDDLE: { tip: 12, base: 10, mid: 11, pip: 9 },
+  RING: { tip: 16, base: 14, mid: 15, pip: 13 },
+  PINKY: { tip: 20, base: 18, mid: 19, pip: 17 }
 }
 
-type ExtractedNailDesign = {
+interface ExtractedNailDesign {
   fingerId: string
-  design: HTMLCanvasElement
-  position: { x: number, y: number }
+  canvas: HTMLCanvasElement
+  originalPosition: { x: number, y: number }
   rotation: number
   scale: number
+  width: number
+  height: number
 }
 
-export default function AdvancedNailTryOn() {
+interface NailPosition {
+  x: number
+  y: number
+  rotation: number
+  width: number
+  height: number
+}
+
+export default function ProfessionalNailTryOn() {
   // State management
   const [postImage, setPostImage] = useState<string | null>(null)
   const [userImage, setUserImage] = useState<string | null>(null)
@@ -52,6 +56,7 @@ export default function AdvancedNailTryOn() {
   const [error, setError] = useState<string | null>(null)
   const [statusMessage, setStatusMessage] = useState<string>("Upload a nail design image to start.")
   const [handsModel, setHandsModel] = useState<any>(null)
+  const [isMediaPipeLoaded, setIsMediaPipeLoaded] = useState(false)
 
   // Canvas refs
   const postImageCanvasRef = useRef<HTMLCanvasElement>(null)
@@ -61,72 +66,79 @@ export default function AdvancedNailTryOn() {
 
   // Load MediaPipe Hands
   const loadMediaPipeHands = useCallback(() => {
+    // Check if MediaPipe is already loaded
+    if (typeof window !== 'undefined' && (window as any).Hands) {
+      initializeHands()
+      return
+    }
+
     try {
+      // Load MediaPipe Hands script
       const script = document.createElement("script")
       script.src = "https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.min.js"
       script.async = true
       script.crossOrigin = "anonymous"
 
       script.onload = () => {
-        try {
-          const drawingUtilsScript = document.createElement("script")
-          drawingUtilsScript.src = "https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"
-          drawingUtilsScript.async = true
-          drawingUtilsScript.crossOrigin = "anonymous"
+        // Load drawing utils
+        const drawingUtilsScript = document.createElement("script")
+        drawingUtilsScript.src = "https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"
+        drawingUtilsScript.async = true
+        drawingUtilsScript.crossOrigin = "anonymous"
 
-          drawingUtilsScript.onload = () => {
-            try {
-              if (typeof window.Hands === "undefined") {
-                console.error("MediaPipe Hands not available")
-                setError("MediaPipe Hands library failed to load. Please try refreshing the page.")
-                return
-              }
-
-              const hands = new window.Hands({
-                locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`,
-              })
-
-              hands.setOptions({
-                maxNumHands: 1,
-                modelComplexity: 1,
-                minDetectionConfidence: 0.8,
-                minTrackingConfidence: 0.8,
-              })
-
-              setHandsModel(hands)
-              setStatusMessage("Ready! Upload a nail design image to extract patterns.")
-            } catch (err) {
-              console.error("Error initializing MediaPipe Hands:", err)
-              setError("Failed to initialize hand detection. Please try refreshing the page.")
-            }
-          }
-
-          drawingUtilsScript.onerror = () => {
-            console.error("Failed to load MediaPipe drawing utils")
-            setError("Failed to load required libraries. Please check your internet connection.")
-          }
-
-          document.body.appendChild(drawingUtilsScript)
-        } catch (err) {
-          console.error("Error loading drawing utils script:", err)
-          setError("Failed to load required libraries. Please check your internet connection.")
+        drawingUtilsScript.onload = () => {
+          setIsMediaPipeLoaded(true)
+          initializeHands()
         }
+
+        drawingUtilsScript.onerror = () => {
+          setError("Failed to load MediaPipe drawing utilities. Please check your internet connection.")
+        }
+
+        document.head.appendChild(drawingUtilsScript)
       }
 
       script.onerror = () => {
-        console.error("Failed to load MediaPipe Hands")
-        setError("Failed to load required libraries. Please check your internet connection.")
+        setError("Failed to load MediaPipe Hands. Please check your internet connection.")
       }
 
-      document.body.appendChild(script)
+      document.head.appendChild(script)
     } catch (err) {
-      console.error("Error in loadMediaPipeHands:", err)
-      setError("Failed to initialize. Please try refreshing the page.")
+      console.error("Error loading MediaPipe:", err)
+      setError("Failed to initialize MediaPipe. Please refresh the page.")
+    }
+  }, [])
+
+  // Initialize MediaPipe Hands
+  const initializeHands = useCallback(() => {
+    try {
+      if (typeof window === 'undefined' || !(window as any).Hands) {
+        setError("MediaPipe Hands not available. Please refresh the page.")
+        return
+      }
+
+      const hands = new (window as any).Hands({
+        locateFile: (file: string) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`,
+      })
+
+      hands.setOptions({
+        maxNumHands: 1,
+        modelComplexity: 1,
+        minDetectionConfidence: 0.8,
+        minTrackingConfidence: 0.8,
+      })
+
+      setHandsModel(hands)
+      setStatusMessage("MediaPipe loaded successfully! Upload a nail design image to start.")
+    } catch (err) {
+      console.error("Error initializing MediaPipe Hands:", err)
+      setError("Failed to initialize hand detection. Please refresh the page.")
     }
   }, [])
 
   useEffect(() => {
     loadMediaPipeHands()
+
     return () => {
       if (handsModel) {
         try {
@@ -141,23 +153,23 @@ export default function AdvancedNailTryOn() {
   // Handle post image upload
   const handlePostImageUpload = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
     try {
-      if (event && event.target && event.target.files && event.target.files[0]) {
+      if (event.target.files && event.target.files[0]) {
         const file = event.target.files[0]
+        
+        // Validate file size (max 10MB)
+        if (file.size > 10 * 1024 * 1024) {
+          setError("File size too large. Please select an image under 10MB.")
+          return
+        }
+
         const reader = new FileReader()
 
         reader.onload = (readerEvent) => {
-          try {
-            if (readerEvent && readerEvent.target && typeof readerEvent.target.result === "string") {
-              const imageDataUrl = readerEvent.target.result
-              setPostImage(imageDataUrl)
-              setError(null)
-              setStatusMessage("Image uploaded! Click 'Extract Designs' to analyze the nail patterns.")
-            } else {
-              setError("Failed to read the image data. Please try another image.")
-            }
-          } catch (err) {
-            console.error("Error in FileReader onload:", err)
-            setError("Failed to process the selected file. Please try another image.")
+          if (readerEvent.target?.result) {
+            const imageDataUrl = readerEvent.target.result as string
+            setPostImage(imageDataUrl)
+            setError(null)
+            setStatusMessage("Image uploaded! Click 'Extract Nail Designs' to analyze the patterns.")
           }
         }
 
@@ -181,7 +193,7 @@ export default function AdvancedNailTryOn() {
     }
 
     setIsLoading(true)
-    setStatusMessage("Extracting nail designs from the image...")
+    setStatusMessage("Analyzing hand and extracting nail designs...")
 
     try {
       const image = new Image()
@@ -208,19 +220,19 @@ export default function AdvancedNailTryOn() {
           ctx.drawImage(image, 0, 0)
 
           handsModel.onResults((results: HandsResults) => {
-            extractDesignsFromHand(results, image)
+            extractDesignsFromDetectedHand(results, image)
           })
 
           await handsModel.send({ image: canvas })
         } catch (err) {
           console.error("Error processing image with MediaPipe:", err)
-          setError("Error processing hand detection. Please try another photo.")
+          setError("Error processing hand detection. Please try another photo with a clearly visible hand.")
           setIsLoading(false)
         }
       }
 
       image.onerror = () => {
-        setError("Failed to load the uploaded image.")
+        setError("Failed to load the uploaded image. Please try another file.")
         setIsLoading(false)
       }
     } catch (err) {
@@ -230,8 +242,8 @@ export default function AdvancedNailTryOn() {
     }
   }, [postImage, handsModel])
 
-  // Extract designs from detected hand
-  const extractDesignsFromHand = useCallback((results: HandsResults, originalImage: HTMLImageElement) => {
+  // Extract designs from detected hand landmarks
+  const extractDesignsFromDetectedHand = useCallback((results: HandsResults, originalImage: HTMLImageElement) => {
     try {
       if (!results.multiHandLandmarks || results.multiHandLandmarks.length === 0) {
         setError("No hand detected in the image. Please try an image with a clearly visible hand.")
@@ -241,20 +253,6 @@ export default function AdvancedNailTryOn() {
 
       const handLandmarks = results.multiHandLandmarks[0]
       const extractedDesigns: ExtractedNailDesign[] = []
-      const extractionCanvas = extractionCanvasRef.current
-
-      if (!extractionCanvas) {
-        setError("Extraction canvas not ready.")
-        setIsLoading(false)
-        return
-      }
-
-      const extractionCtx = extractionCanvas.getContext("2d")
-      if (!extractionCtx) {
-        setError("Could not get extraction canvas context.")
-        setIsLoading(false)
-        return
-      }
 
       // Process each finger
       Object.entries(FINGER_LANDMARKS).forEach(([fingerName, landmarks]) => {
@@ -264,97 +262,16 @@ export default function AdvancedNailTryOn() {
           const midLandmark = handLandmarks[landmarks.mid]
 
           if (tipLandmark && baseLandmark && midLandmark) {
-            // Convert normalized coordinates to pixel coordinates
-            const tip = { x: tipLandmark.x * originalImage.naturalWidth, y: tipLandmark.y * originalImage.naturalHeight }
-            const base = { x: baseLandmark.x * originalImage.naturalWidth, y: baseLandmark.y * originalImage.naturalHeight }
-            const mid = { x: midLandmark.x * originalImage.naturalWidth, y: midLandmark.y * originalImage.naturalHeight }
+            const design = extractSingleNailDesign(
+              fingerName.toLowerCase(),
+              tipLandmark,
+              baseLandmark,
+              midLandmark,
+              originalImage
+            )
 
-            // Calculate nail area
-            const nailLength = Math.sqrt(Math.pow(tip.x - base.x, 2) + Math.pow(tip.y - base.y, 2))
-            const nailWidth = nailLength * 0.7 // Approximate nail width
-
-            // Calculate rotation
-            const rotation = Math.atan2(tip.y - base.y, tip.x - base.x)
-
-            // Create nail design canvas
-            const nailCanvas = document.createElement("canvas")
-            nailCanvas.width = Math.max(nailWidth, 50)
-            nailCanvas.height = Math.max(nailLength, 50)
-            const nailCtx = nailCanvas.getContext("2d")
-
-            if (nailCtx) {
-              // Extract nail area from original image
-              nailCtx.save()
-              nailCtx.translate(nailCanvas.width / 2, nailCanvas.height / 2)
-              nailCtx.rotate(-rotation)
-
-              // Draw the nail area
-              const sourceX = Math.max(0, tip.x - nailWidth / 2)
-              const sourceY = Math.max(0, tip.y - nailLength / 2)
-              const sourceWidth = Math.min(nailWidth, originalImage.naturalWidth - sourceX)
-              const sourceHeight = Math.min(nailLength, originalImage.naturalHeight - sourceY)
-
-              if (sourceWidth > 0 && sourceHeight > 0) {
-                nailCtx.drawImage(
-                  originalImage,
-                  sourceX, sourceY, sourceWidth, sourceHeight,
-                  -nailCanvas.width / 2, -nailCanvas.height / 2, nailCanvas.width, nailCanvas.height
-                )
-              }
-
-              nailCtx.restore()
-
-              // Apply advanced background removal and nail enhancement
-              const imageData = nailCtx.getImageData(0, 0, nailCanvas.width, nailCanvas.height)
-              const data = imageData.data
-
-              // Enhanced skin tone detection and removal
-              for (let i = 0; i < data.length; i += 4) {
-                const r = data[i]
-                const g = data[i + 1]
-                const b = data[i + 2]
-
-                // Multiple skin tone detection methods
-                const isSkinTone1 = (r > 95 && g > 40 && b > 20 && 
-                                   Math.max(r, g, b) - Math.min(r, g, b) > 15 &&
-                                   Math.abs(r - g) > 15 && r > g && r > b)
-
-                const isSkinTone2 = (r > 120 && g > 80 && b > 50 && 
-                                   r > b && g > b && Math.abs(r - g) < 50)
-
-                const isSkinTone3 = (r >= 60 && r <= 255 && g >= 40 && g <= 255 && b >= 20 && b <= 255 &&
-                                   r > g && g > b && r > b && r - g >= 10 && g - b >= 5)
-
-                // Background detection (very light or very dark areas)
-                const isBackground = (r + g + b) < 30 || (r + g + b) > 650 ||
-                                   (Math.abs(r - g) < 10 && Math.abs(g - b) < 10 && Math.abs(r - b) < 10)
-
-                if (isSkinTone1 || isSkinTone2 || isSkinTone3 || isBackground) {
-                  data[i + 3] = 0 // Make transparent
-                } else {
-                  // Enhance nail design colors
-                  const brightness = (r + g + b) / 3
-                  const contrast = 1.3
-                  const newR = Math.min(255, Math.max(0, (r - 128) * contrast + 128))
-                  const newG = Math.min(255, Math.max(0, (g - 128) * contrast + 128))
-                  const newB = Math.min(255, Math.max(0, (b - 128) * contrast + 128))
-                  
-                  data[i] = newR
-                  data[i + 1] = newG
-                  data[i + 2] = newB
-                  data[i + 3] = Math.min(255, data[i + 3] * 1.2) // Slightly enhance opacity
-                }
-              }
-
-              nailCtx.putImageData(imageData, 0, 0)
-
-              extractedDesigns.push({
-                fingerId: fingerName.toLowerCase(),
-                design: nailCanvas,
-                position: { x: tip.x, y: tip.y },
-                rotation,
-                scale: nailLength / 100 // Normalize scale
-              })
+            if (design) {
+              extractedDesigns.push(design)
             }
           }
         } catch (err) {
@@ -362,154 +279,166 @@ export default function AdvancedNailTryOn() {
         }
       })
 
-      setExtractedDesigns(extractedDesigns)
-      setCurrentStep('capture')
-      setStatusMessage(`Extracted ${extractedDesigns.length} nail designs! Now capture your hand to apply them.`)
+      if (extractedDesigns.length > 0) {
+        setExtractedDesigns(extractedDesigns)
+        setCurrentStep('capture')
+        setStatusMessage(`Successfully extracted ${extractedDesigns.length} nail designs! Now capture your hand to apply them.`)
+      } else {
+        setError("Could not extract any nail designs. Please try an image with clearer nail visibility.")
+      }
+
       setIsLoading(false)
     } catch (err) {
-      console.error("Error in extractDesignsFromHand:", err)
+      console.error("Error in extractDesignsFromDetectedHand:", err)
       setError("Error extracting nail designs. Please try another image.")
       setIsLoading(false)
     }
   }, [])
 
-  // Camera capture functionality
-  const handleCameraCapture = useCallback(() => {
-    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-      setError("Camera access is not supported in your browser.")
-      return
-    }
-
+  // Extract single nail design
+  const extractSingleNailDesign = useCallback((
+    fingerId: string,
+    tip: HandLandmark,
+    base: HandLandmark,
+    mid: HandLandmark,
+    sourceImage: HTMLImageElement
+  ): ExtractedNailDesign | null => {
     try {
-      const videoElement = document.createElement("video")
-      const canvasElement = document.createElement("canvas")
-      const canvasCtx = canvasElement.getContext("2d")
+      const canvas = document.createElement("canvas")
+      const ctx = canvas.getContext("2d")
+      if (!ctx) return null
 
-      navigator.mediaDevices
-        .getUserMedia({ video: { facingMode: "environment" } })
-        .then((stream) => {
-          try {
-            const modal = document.createElement("div")
-            modal.style.position = "fixed"
-            modal.style.top = "0"
-            modal.style.left = "0"
-            modal.style.width = "100%"
-            modal.style.height = "100%"
-            modal.style.backgroundColor = "rgba(0,0,0,0.9)"
-            modal.style.zIndex = "1000"
-            modal.style.display = "flex"
-            modal.style.flexDirection = "column"
-            modal.style.alignItems = "center"
-            modal.style.justifyContent = "center"
+      // Convert normalized coordinates to pixel coordinates
+      const tipPx = { x: tip.x * sourceImage.naturalWidth, y: tip.y * sourceImage.naturalHeight }
+      const basePx = { x: base.x * sourceImage.naturalWidth, y: base.y * sourceImage.naturalHeight }
+      const midPx = { x: mid.x * sourceImage.naturalWidth, y: mid.y * sourceImage.naturalHeight }
 
-            videoElement.srcObject = stream
-            videoElement.style.maxWidth = "100%"
-            videoElement.style.maxHeight = "80%"
-            videoElement.style.transform = "scaleX(-1)"
-            videoElement.autoplay = true
-            modal.appendChild(videoElement)
+      // Calculate nail dimensions
+      const nailLength = Math.sqrt(Math.pow(tipPx.x - basePx.x, 2) + Math.pow(tipPx.y - basePx.y, 2))
+      const nailWidth = nailLength * 0.8 // Nail width ratio
 
-            const captureBtn = document.createElement("button")
-            captureBtn.textContent = "Take Photo"
-            captureBtn.style.margin = "20px"
-            captureBtn.style.padding = "10px 20px"
-            captureBtn.style.backgroundColor = "#f472b6"
-            captureBtn.style.color = "white"
-            captureBtn.style.border = "none"
-            captureBtn.style.borderRadius = "5px"
-            captureBtn.style.cursor = "pointer"
-            modal.appendChild(captureBtn)
+      // Calculate rotation
+      const rotation = Math.atan2(tipPx.y - midPx.y, tipPx.x - midPx.x)
 
-            const cancelBtn = document.createElement("button")
-            cancelBtn.textContent = "Cancel"
-            cancelBtn.style.padding = "10px 20px"
-            cancelBtn.style.backgroundColor = "#6b7280"
-            cancelBtn.style.color = "white"
-            cancelBtn.style.border = "none"
-            cancelBtn.style.borderRadius = "5px"
-            cancelBtn.style.cursor = "pointer"
-            modal.appendChild(cancelBtn)
+      // Set canvas size
+      canvas.width = Math.max(nailWidth * 1.5, 80)
+      canvas.height = Math.max(nailLength * 1.5, 100)
 
-            document.body.appendChild(modal)
+      // Calculate nail center (closer to tip)
+      const centerX = tipPx.x * 0.7 + basePx.x * 0.3
+      const centerY = tipPx.y * 0.7 + basePx.y * 0.3
 
-            captureBtn.onclick = () => {
-              try {
-                canvasElement.width = videoElement.videoWidth
-                canvasElement.height = videoElement.videoHeight
+      // Extract nail region
+      ctx.save()
+      ctx.translate(canvas.width / 2, canvas.height / 2)
+      ctx.rotate(-rotation)
 
-                if (canvasCtx) {
-                  canvasCtx.drawImage(videoElement, 0, 0, canvasElement.width, canvasElement.height)
-                  const imageDataUrl = canvasElement.toDataURL("image/png")
+      // Extract area around the nail
+      const extractX = Math.max(0, centerX - canvas.width / 2)
+      const extractY = Math.max(0, centerY - canvas.height / 2)
+      const extractWidth = Math.min(canvas.width, sourceImage.naturalWidth - extractX)
+      const extractHeight = Math.min(canvas.height, sourceImage.naturalHeight - extractY)
 
-                  videoElement.srcObject = null
-                  stream.getTracks().forEach((track) => track.stop())
-                  document.body.removeChild(modal)
+      if (extractWidth > 0 && extractHeight > 0) {
+        ctx.drawImage(
+          sourceImage,
+          extractX, extractY, extractWidth, extractHeight,
+          -canvas.width / 2, -canvas.height / 2, canvas.width, canvas.height
+        )
+      }
 
-                  setUserImage(imageDataUrl)
-                  setProcessedImage(null)
-                  setError(null)
-                  setStatusMessage("Processing your image...")
-                  applyExtractedDesigns(imageDataUrl)
-                }
-              } catch (err) {
-                console.error("Error capturing image:", err)
-                setError("Failed to capture image. Please try again.")
-                try {
-                  videoElement.srcObject = null
-                  stream.getTracks().forEach((track) => track.stop())
-                  document.body.removeChild(modal)
-                } catch (cleanupErr) {
-                  console.error("Error during cleanup:", cleanupErr)
-                }
-              }
-            }
+      ctx.restore()
 
-            cancelBtn.onclick = () => {
-              try {
-                videoElement.srcObject = null
-                stream.getTracks().forEach((track) => track.stop())
-                document.body.removeChild(modal)
-              } catch (err) {
-                console.error("Error canceling camera:", err)
-              }
-            }
-          } catch (err) {
-            console.error("Error setting up camera UI:", err)
-            setError("Failed to set up camera interface. Please try again.")
-          }
-        })
-        .catch((err) => {
-          console.error("Error accessing camera:", err)
-          setError("Failed to access camera. Please check permissions and try again.")
-        })
+      // Apply background removal (advanced skin tone detection)
+      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height)
+      const data = imageData.data
+
+      for (let i = 0; i < data.length; i += 4) {
+        const r = data[i]
+        const g = data[i + 1]
+        const b = data[i + 2]
+
+        // Multiple skin tone detection algorithms
+        const isSkinTone = detectSkinTone(r, g, b)
+        const isBackground = detectBackground(r, g, b)
+
+        if (isSkinTone || isBackground) {
+          data[i + 3] = 0 // Make transparent
+        } else {
+          // Enhance nail design colors
+          const brightness = 1.2
+          data[i] = Math.min(255, r * brightness)
+          data[i + 1] = Math.min(255, g * brightness)
+          data[i + 2] = Math.min(255, b * brightness)
+        }
+      }
+
+      ctx.putImageData(imageData, 0, 0)
+
+      return {
+        fingerId,
+        canvas,
+        originalPosition: { x: centerX, y: centerY },
+        rotation,
+        scale: nailLength / 100,
+        width: nailWidth,
+        height: nailLength
+      }
     } catch (err) {
-      console.error("Error in handleCameraCapture:", err)
-      setError("Failed to initialize camera. Please try again.")
+      console.error(`Error extracting nail design for ${fingerId}:`, err)
+      return null
     }
   }, [])
 
-  // Handle user image capture/upload
+  // Advanced skin tone detection
+  const detectSkinTone = useCallback((r: number, g: number, b: number): boolean => {
+    // Multiple skin tone detection methods
+    const method1 = (r > 95 && g > 40 && b > 20 && 
+                     Math.max(r, g, b) - Math.min(r, g, b) > 15 &&
+                     Math.abs(r - g) > 15 && r > g && r > b)
+
+    const method2 = (r > 120 && g > 80 && b > 50 && 
+                     r > b && g > b && Math.abs(r - g) < 50)
+
+    const method3 = (r >= 60 && r <= 255 && g >= 40 && g <= 255 && b >= 20 && b <= 255 &&
+                     r > g && g > b && r > b && r - g >= 10 && g - b >= 5)
+
+    const method4 = (r > 80 && g > 50 && b > 30 && r > b && g > b)
+
+    return method1 || method2 || method3 || method4
+  }, [])
+
+  // Background detection
+  const detectBackground = useCallback((r: number, g: number, b: number): boolean => {
+    const brightness = r + g + b
+    const isVeryDark = brightness < 50
+    const isVeryLight = brightness > 700
+    const isNeutral = Math.abs(r - g) < 15 && Math.abs(g - b) < 15 && Math.abs(r - b) < 15
+
+    return isVeryDark || isVeryLight || (isNeutral && brightness > 600)
+  }, [])
+
+  // Handle user image upload
   const handleUserImageUpload = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
     try {
-      if (event && event.target && event.target.files && event.target.files[0]) {
+      if (event.target.files && event.target.files[0]) {
         const file = event.target.files[0]
+        
+        if (file.size > 10 * 1024 * 1024) {
+          setError("File size too large. Please select an image under 10MB.")
+          return
+        }
+
         const reader = new FileReader()
 
         reader.onload = (readerEvent) => {
-          try {
-            if (readerEvent && readerEvent.target && typeof readerEvent.target.result === "string") {
-              const imageDataUrl = readerEvent.target.result
-              setUserImage(imageDataUrl)
-              setProcessedImage(null)
-              setError(null)
-              setStatusMessage("Processing your image...")
-              applyExtractedDesigns(imageDataUrl)
-            } else {
-              setError("Failed to read the image data. Please try another image.")
-            }
-          } catch (err) {
-            console.error("Error in FileReader onload:", err)
-            setError("Failed to process the selected file. Please try another image.")
+          if (readerEvent.target?.result) {
+            const imageDataUrl = readerEvent.target.result as string
+            setUserImage(imageDataUrl)
+            setProcessedImage(null)
+            setError(null)
+            setStatusMessage("Processing your image...")
+            applyDesignsToUserHand(imageDataUrl)
           }
         }
 
@@ -526,7 +455,7 @@ export default function AdvancedNailTryOn() {
   }, [])
 
   // Apply extracted designs to user's hand
-  const applyExtractedDesigns = useCallback(async (imageDataUrl: string) => {
+  const applyDesignsToUserHand = useCallback(async (imageDataUrl: string) => {
     if (!handsModel || extractedDesigns.length === 0) {
       setError("No designs extracted or MediaPipe not ready.")
       setIsLoading(false)
@@ -548,6 +477,7 @@ export default function AdvancedNailTryOn() {
             setIsLoading(false)
             return
           }
+
           userCanvas.width = image.naturalWidth
           userCanvas.height = image.naturalHeight
           const ctx = userCanvas.getContext("2d")
@@ -559,7 +489,7 @@ export default function AdvancedNailTryOn() {
           ctx.drawImage(image, 0, 0)
 
           handsModel.onResults((results: HandsResults) => {
-            applyDesignsToUserHand(results, image)
+            applyDesignsToDetectedHand(results, image)
           })
 
           await handsModel.send({ image: userCanvas })
@@ -575,14 +505,14 @@ export default function AdvancedNailTryOn() {
         setIsLoading(false)
       }
     } catch (err) {
-      console.error("Error in applyExtractedDesigns:", err)
+      console.error("Error in applyDesignsToUserHand:", err)
       setError("Failed to apply designs. Please try another image.")
       setIsLoading(false)
     }
   }, [handsModel, extractedDesigns])
 
-  // Apply designs to user's hand
-  const applyDesignsToUserHand = useCallback((results: HandsResults, originalImage: HTMLImageElement) => {
+  // Apply designs to detected hand
+  const applyDesignsToDetectedHand = useCallback((results: HandsResults, originalImage: HTMLImageElement) => {
     try {
       const resultCanvas = resultCanvasRef.current
       if (!resultCanvas) {
@@ -600,6 +530,7 @@ export default function AdvancedNailTryOn() {
         return
       }
 
+      // Draw original image
       ctx.clearRect(0, 0, resultCanvas.width, resultCanvas.height)
       ctx.drawImage(originalImage, 0, 0, resultCanvas.width, resultCanvas.height)
 
@@ -614,6 +545,9 @@ export default function AdvancedNailTryOn() {
           const midLandmark = handLandmarks[landmarks.mid]
 
           if (tipLandmark && baseLandmark && midLandmark && extractedDesigns[index]) {
+            const design = extractedDesigns[index]
+            
+            // Calculate position and rotation for user's hand
             const tip = { x: tipLandmark.x * resultCanvas.width, y: tipLandmark.y * resultCanvas.height }
             const base = { x: baseLandmark.x * resultCanvas.width, y: baseLandmark.y * resultCanvas.height }
             const mid = { x: midLandmark.x * resultCanvas.width, y: midLandmark.y * resultCanvas.height }
@@ -621,58 +555,134 @@ export default function AdvancedNailTryOn() {
             const nailLength = Math.sqrt(Math.pow(tip.x - base.x, 2) + Math.pow(tip.y - base.y, 2))
             const rotation = Math.atan2(tip.y - mid.y, tip.x - mid.x)
 
-            const design = extractedDesigns[index].design
-            const scaledWidth = design.width * (nailLength / 100)
-            const scaledHeight = design.height * (nailLength / 100)
+            // Calculate center position
+            const centerX = tip.x * 0.7 + base.x * 0.3
+            const centerY = tip.y * 0.7 + base.y * 0.3
+
+            // Scale design to match user's nail size
+            const scale = nailLength / design.height
 
             ctx.save()
-            ctx.translate(tip.x, tip.y)
+            ctx.translate(centerX, centerY)
             ctx.rotate(rotation)
+            ctx.scale(scale, scale)
+            
+            // Apply design with blending mode for better integration
+            ctx.globalCompositeOperation = 'multiply'
+            ctx.globalAlpha = 0.8
+            
             ctx.drawImage(
-              design,
-              -scaledWidth / 2,
-              -scaledHeight / 2,
-              scaledWidth,
-              scaledHeight
+              design.canvas,
+              -design.canvas.width / 2,
+              -design.canvas.height / 2
             )
+            
             ctx.restore()
             designsApplied++
           }
         })
 
         if (designsApplied > 0) {
-          setStatusMessage(`Applied ${designsApplied} nail designs! Check out your virtual manicure.`)
+          setStatusMessage(`Successfully applied ${designsApplied} nail designs! Check out your virtual manicure.`)
         } else {
           setStatusMessage("Could not apply designs. Please ensure your hand is clearly visible.")
         }
+        
         setProcessedImage(resultCanvas.toDataURL("image/png"))
         setCurrentStep('apply')
       } else {
         setStatusMessage("No hand detected in your image. Please try a clearer photo.")
-        ctx.drawImage(originalImage, 0, 0, resultCanvas.width, resultCanvas.height)
         setProcessedImage(resultCanvas.toDataURL("image/png"))
       }
     } catch (err) {
-      console.error("Error in applyDesignsToUserHand:", err)
+      console.error("Error in applyDesignsToDetectedHand:", err)
       setError("Error applying nail designs. Please try another photo.")
     } finally {
       setIsLoading(false)
     }
   }, [extractedDesigns])
 
+  // Camera capture functionality
+  const handleCameraCapture = useCallback(() => {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      setError("Camera access is not supported in your browser.")
+      return
+    }
+
+    navigator.mediaDevices
+      .getUserMedia({ video: { facingMode: "environment", width: 1280, height: 720 } })
+      .then((stream) => {
+        const modal = document.createElement("div")
+        modal.style.cssText = `
+          position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+          background: rgba(0,0,0,0.9); z-index: 1000;
+          display: flex; flex-direction: column; align-items: center; justify-content: center;
+        `
+
+        const video = document.createElement("video")
+        video.style.cssText = "max-width: 100%; max-height: 80%; transform: scaleX(-1);"
+        video.srcObject = stream
+        video.autoplay = true
+        modal.appendChild(video)
+
+        const captureBtn = document.createElement("button")
+        captureBtn.textContent = "Take Photo"
+        captureBtn.style.cssText = `
+          margin: 20px; padding: 12px 24px; background: #ec4899; color: white;
+          border: none; border-radius: 8px; cursor: pointer; font-size: 16px;
+        `
+        modal.appendChild(captureBtn)
+
+        const cancelBtn = document.createElement("button")
+        cancelBtn.textContent = "Cancel"
+        cancelBtn.style.cssText = `
+          padding: 12px 24px; background: #6b7280; color: white;
+          border: none; border-radius: 8px; cursor: pointer; font-size: 16px;
+        `
+        modal.appendChild(cancelBtn)
+
+        document.body.appendChild(modal)
+
+        captureBtn.onclick = () => {
+          const canvas = document.createElement("canvas")
+          const ctx = canvas.getContext("2d")
+          if (ctx) {
+            canvas.width = video.videoWidth
+            canvas.height = video.videoHeight
+            ctx.scale(-1, 1) // Flip horizontally
+            ctx.drawImage(video, -canvas.width, 0)
+            const imageDataUrl = canvas.toDataURL("image/png")
+
+            stream.getTracks().forEach(track => track.stop())
+            document.body.removeChild(modal)
+
+            setUserImage(imageDataUrl)
+            setProcessedImage(null)
+            setError(null)
+            setStatusMessage("Processing your image...")
+            applyDesignsToUserHand(imageDataUrl)
+          }
+        }
+
+        cancelBtn.onclick = () => {
+          stream.getTracks().forEach(track => track.stop())
+          document.body.removeChild(modal)
+        }
+      })
+      .catch((err) => {
+        console.error("Error accessing camera:", err)
+        setError("Failed to access camera. Please check permissions and try again.")
+      })
+  }, [applyDesignsToUserHand])
+
   // Save image
   const handleSaveImage = useCallback(() => {
     if (processedImage) {
-      try {
-        const link = document.createElement("a")
-        link.download = `nail-design-try-on-${new Date().getTime()}.png`
-        link.href = processedImage
-        link.click()
-        setStatusMessage("Image saved successfully!")
-      } catch (err) {
-        console.error("Error saving image:", err)
-        setError("Failed to save image. Please try again.")
-      }
+      const link = document.createElement("a")
+      link.download = `nail-design-${Date.now()}.png`
+      link.href = processedImage
+      link.click()
+      setStatusMessage("Image saved successfully!")
     }
   }, [processedImage])
 
@@ -682,9 +692,9 @@ export default function AdvancedNailTryOn() {
       try {
         const response = await fetch(processedImage)
         const blob = await response.blob()
-        const file = new File([blob], "nail-design-try-on.png", { type: "image/png" })
+        const file = new File([blob], "nail-design.png", { type: "image/png" })
         
-        if (navigator.share && navigator.canShare({ files: [file] })) {
+        if (navigator.share && navigator.canShare?.({ files: [file] })) {
           await navigator.share({
             title: "My Virtual Nail Design!",
             text: "Check out this nail design I tried on!",
@@ -692,42 +702,17 @@ export default function AdvancedNailTryOn() {
           })
           setStatusMessage("Image shared successfully!")
         } else {
-          // Fallback: copy to clipboard or save
-          const canvas = document.createElement('canvas')
-          const ctx = canvas.getContext('2d')
-          const img = new Image()
-          
-          img.onload = () => {
-            canvas.width = img.width
-            canvas.height = img.height
-            ctx?.drawImage(img, 0, 0)
-            
-            canvas.toBlob((blob) => {
-              if (blob && navigator.clipboard) {
-                navigator.clipboard.write([
-                  new ClipboardItem({ 'image/png': blob })
-                ]).then(() => {
-                  setStatusMessage("Image copied to clipboard!")
-                }).catch(() => {
-                  handleSaveImage() // Fallback to save
-                })
-              } else {
-                handleSaveImage() // Fallback to save
-              }
-            })
-          }
-          
-          img.src = processedImage
+          handleSaveImage()
+          setStatusMessage("Sharing not supported. Image saved instead.")
         }
       } catch (err) {
         console.error("Share failed:", err)
-        setStatusMessage("Sharing not supported. Image will be saved instead.")
         handleSaveImage()
       }
     }
   }, [processedImage, handleSaveImage])
 
-  // Reset to start
+  // Reset application
   const handleReset = useCallback(() => {
     setPostImage(null)
     setUserImage(null)
@@ -746,8 +731,11 @@ export default function AdvancedNailTryOn() {
       <canvas ref={extractionCanvasRef} style={{ display: "none" }} />
 
       <div className="text-center mb-6">
-        <h2 className="text-3xl font-bold text-pink-600 mb-2">Advanced Nail Design Try-On</h2>
+        <h2 className="text-3xl font-bold text-pink-600 mb-2">Professional Nail Design Try-On</h2>
         <p className="text-gray-600">Extract real nail designs from images and try them on your hands!</p>
+        {!isMediaPipeLoaded && (
+          <p className="text-orange-600 text-sm mt-2">Loading MediaPipe Hands...</p>
+        )}
       </div>
 
       {/* Progress Steps */}
@@ -817,12 +805,12 @@ export default function AdvancedNailTryOn() {
               <div key={design.fingerId} className="border rounded-lg p-2">
                 <canvas
                   ref={(el) => {
-                    if (el && design.design) {
-                      el.width = design.design.width
-                      el.height = design.design.height
+                    if (el && design.canvas) {
+                      el.width = design.canvas.width
+                      el.height = design.canvas.height
                       const ctx = el.getContext("2d")
                       if (ctx) {
-                        ctx.drawImage(design.design, 0, 0)
+                        ctx.drawImage(design.canvas, 0, 0)
                       }
                     }
                   }}
@@ -865,7 +853,16 @@ export default function AdvancedNailTryOn() {
               <p className="text-sm text-gray-500">Take a photo with your device camera</p>
             </div>
           </div>
-          <p className="text-sm text-gray-500 mb-4">For best results, ensure your hand is well-lit and clearly visible</p>
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
+            <h4 className="font-semibold text-blue-800 mb-2">📋 Tips for Best Results:</h4>
+            <ul className="text-sm text-blue-700 text-left list-disc list-inside space-y-1">
+              <li>Ensure your hand is well-lit and clearly visible</li>
+              <li>Position your hand similar to the reference image</li>
+              <li>Keep fingers slightly spread apart</li>
+              <li>Avoid shadows or reflections</li>
+              <li>Use a plain background if possible</li>
+            </ul>
+          </div>
         </div>
       )}
 
@@ -881,7 +878,7 @@ export default function AdvancedNailTryOn() {
             />
           </div>
           
-          <div className="flex justify-center gap-3">
+          <div className="flex justify-center gap-3 mb-4">
             <Button onClick={handleSaveImage} variant="outline" className="border-pink-500 text-pink-500 hover:bg-pink-50">
               <Download className="mr-2 h-4 w-4" />
               Save Image
@@ -895,6 +892,14 @@ export default function AdvancedNailTryOn() {
               Try Another Design
             </Button>
           </div>
+
+          <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+            <h4 className="font-semibold text-green-800 mb-2">🎉 Success!</h4>
+            <p className="text-sm text-green-700">
+              Your nail design has been successfully applied! The design was extracted from the original image and 
+              precisely positioned on your nails using advanced hand detection technology.
+            </p>
+          </div>
         </div>
       )}
 
@@ -903,6 +908,12 @@ export default function AdvancedNailTryOn() {
         <div className="text-center my-6">
           <Loader2 className="h-12 w-12 animate-spin mx-auto text-pink-500" />
           <p className="mt-2 text-gray-600">{statusMessage}</p>
+          <div className="mt-4 bg-yellow-50 border border-yellow-200 rounded-lg p-3">
+            <p className="text-sm text-yellow-700">
+              {currentStep === 'extract' && "Analyzing hand landmarks and extracting nail designs..."}
+              {currentStep === 'capture' && "Processing your image and applying designs..."}
+            </p>
+          </div>
         </div>
       )}
 
@@ -922,11 +933,25 @@ export default function AdvancedNailTryOn() {
         </div>
       )}
 
+      {/* Technical Information */}
+      <div className="mt-8 bg-gray-50 border border-gray-200 rounded-lg p-4">
+        <h4 className="font-semibold text-gray-800 mb-2">🔧 Technical Details:</h4>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm text-gray-600">
+          <div>
+            <p><strong>Hand Detection:</strong> MediaPipe Hands</p>
+            <p><strong>Landmarks Used:</strong> Points 4, 8, 12, 16, 20 (fingertips)</p>
+            <p><strong>Background Removal:</strong> Advanced skin tone detection</p>
+          </div>
+          <div>
+            <p><strong>Design Extraction:</strong> Automated nail region cropping</p>
+            <p><strong>Application Method:</strong> Landmark-based positioning</p>
+            <p><strong>Processing:</strong> Canvas API with advanced blending</p>
+          </div>
+        </div>
+      </div>
+
       {/* Result Canvas (hidden) */}
-      <canvas
-        ref={resultCanvasRef}
-        className="hidden"
-      />
+      <canvas ref={resultCanvasRef} className="hidden" />
     </div>
   )
 }
